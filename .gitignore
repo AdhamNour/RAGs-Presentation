@@ -1,0 +1,40 @@
+# LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.nav
+*.snm
+*.vrb
+*.bak
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex(busy)
+
+# PDFs (built by CI -- see .github/workflows/build-pdf.yml)
+*.pdf
+
+# Temporary files
+*~
+*.swp
+*.swo
+*.tmp
+
+# IDE/Editor
+.vscode/
+*.sublime-*
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+tstex_modules/
+*.pyc
+__pycache__/
+
+# Rendered preview files (local builds)
+$sp/
+scratchpad/

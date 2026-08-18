@@ -1,0 +1,33 @@
+name: Build PDF
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - '**.tex'
+      - '.github/workflows/build-pdf.yml'
+  pull_request:
+    paths:
+      - '**.tex'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compile LaTeX document
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: rag-presentation.tex
+          latexmk_use_xelatex: false
+          latexmk_use_lualatex: false
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-presentation-pdf
+          path: rag-presentation.pdf
+          retention-days: 30

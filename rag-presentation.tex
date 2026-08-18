@@ -1041,6 +1041,260 @@
 \end{frame}
 
 %==============================================================
+\section{Part 7 --- A real build, start to finish}
+
+\begin{frame}{This is not hypothetical}
+  \begin{block}{One evening, one ordinary laptop}
+    Everything in this talk so far has been diagrams. This part is a real
+    story: pointing a home PC at a folder of documents and building a working
+    RAG from nothing, in one sitting.
+  \end{block}
+  \medskip
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.478\textwidth}
+      \begin{exampleblock}<2->{The hardware}
+        \begin{itemize}
+          \item An ordinary gaming PC
+          \item One graphics card with 8\,GB of memory
+          \item No data centre, no cloud bill
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.478\textwidth}
+      \begin{exampleblock}<3->{The tools (all free)}
+        \begin{itemize}
+          \item A small language model, run locally
+          \item A small embedding model, run locally
+          \item A vector database on the same machine
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+  \medskip
+  \uncover<4->{\centering\small\color{raggray}
+  The point is not the specific tools --- it's that everything you've just
+  learned fits on a single consumer PC.}
+\end{frame}
+
+\begin{frame}{The build: the same five steps, for real}
+  \centering
+  \begin{beamercolorbox}[sep=8pt,rounded=true,wd=0.92\textwidth]{block body}
+    \ttfamily\footnotesize
+    install a local model runner \\
+    download a small language model \ +\ a small embedding model \\
+    pip install (two small packages) \\
+    \color{ragorange}> program.py ingest C:\textbackslash my\_documents \\
+    \color{raggreen}> program.py chat
+  \end{beamercolorbox}
+  \bigskip
+  \begin{block}<2->{Nothing new, conceptually}
+    \texttt{ingest} is Stage 1 from earlier: split, embed, store.
+    \texttt{chat} is Stage 2: embed the question, search, assemble, generate.
+    Same five moving parts, just typed instead of drawn.
+  \end{block}
+  \medskip
+  \centering\small\color{raggray}
+  \uncover<3->{Total setup time: about fifteen minutes, mostly spent
+  downloading.}
+\end{frame}
+
+\begin{frame}{The first question --- and the first failure}
+  \begin{block}{The question that was supposed to be easy}
+    \centering\large ``How do I keep a model loaded in memory?''
+  \end{block}
+  \medskip
+  \uncover<2->{The answer sat almost word-for-word in one FAQ file. This
+  should have been the safest question of the whole test.}
+  \bigskip
+  \begin{alertblock}<3->{What actually happened}
+    The system answered anyway --- confidently, fluently, and from the
+    \emph{wrong} file. Every retrieved passage came from a different
+    document. The one file that actually had the answer never showed up at
+    all.
+  \end{alertblock}
+  \medskip
+  \uncover<4->{\centering\textbf{\color{ragblue}Welcome to a real RAG
+  incident.}}
+\end{frame}
+
+\begin{frame}{Anatomy of a RAG incident}
+  A wrong answer can only be born in three places --- and the fix is
+  completely different for each one.
+  \bigskip
+  \begin{center}
+  \begin{tikzpicture}[node distance=8mm]
+    \node[rbox, minimum width=3.3cm, visible on=<2->] (ing)
+         {\textbf{Ingestion gap}\\\tiny the answer was never\\\tiny read in
+         at all};
+    \node[obox, right=of ing, minimum width=3.3cm, visible on=<3->] (ret)
+         {\textbf{Retrieval miss}\\\tiny it's in the index, but\\\tiny
+         search didn't find it};
+    \node[gbox, right=of ret, minimum width=3.3cm, visible on=<4->] (gen)
+         {\textbf{Generation failure}\\\tiny the model saw it and\\\tiny
+         still got it wrong};
+  \end{tikzpicture}
+  \end{center}
+  \bigskip
+  \uncover<5->{\begin{exampleblock}{The check that separates them}
+    Before guessing: ask the store directly which files it actually holds.
+    That one query tells you instantly whether you have an ingestion problem
+    or something further downstream.
+  \end{exampleblock}}
+\end{frame}
+
+\begin{frame}{The bug: one silent letter}
+  \begin{center}
+  \begin{tikzpicture}[node distance=6mm]
+    \node[doc, minimum width=2.6cm, minimum height=1cm, visible on=<1->]
+         (file) {faq.mdx};
+    \node[doc, below=of file, minimum width=2.6cm, minimum height=1cm,
+          visible on=<3->] (other) {handbook.md};
+    \node[rbox, right=2.2cm of file, minimum width=4.0cm, minimum height=2.6cm,
+          visible on=<2->] (filter)
+         {\textbf{Ingestion filter}\\\tiny only recognised \texttt{.md}};
+    \draw[ar, ragred, visible on=<2->] (file) -- (filter);
+    \node[font=\Large, text=ragred, visible on=<2->]
+         at ($(file)!0.55!(filter)$) {$\times$};
+    \draw[ar, raggreen, visible on=<3->] (other) -- (filter);
+    \node[font=\Large, text=raggreen, visible on=<3->]
+         at ($(other)!0.55!(filter)$) {$\checkmark$};
+  \end{tikzpicture}
+  \end{center}
+  \bigskip
+  \begin{alertblock}<4->{The actual cause}
+    The FAQ file was named with an extra letter --- \texttt{.mdx}, not
+    \texttt{.md}. The filter only watched for one exact spelling. The file
+    was silently skipped, and the pipeline reported success anyway.
+  \end{alertblock}
+  \medskip
+  \uncover<5->{\centering\small\color{raggray}
+  Not embeddings, not the model, not the database. A file extension.}
+\end{frame}
+
+\begin{frame}{The lesson: garbage in is invisible}
+  \begin{block}{Why this bug is the scary kind}
+    Nothing crashed. No error appeared. The system ran end to end and gave a
+    fluent, wrong answer --- which is worse than a crash, because a crash at
+    least tells you to look.
+  \end{block}
+  \medskip
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.478\textwidth}
+      \begin{exampleblock}<2->{The fix}
+        Widen the filter to catch the file, then re-run ingestion. One
+        line. The rest of the pipeline was already correct.
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.478\textwidth}
+      \begin{block}<3->{The habit that catches it next time}
+        Have ingestion report its own coverage: \emph{found 214 files,
+        indexed 198, skipped 16}. A silent gap should scream, not hide.
+      \end{block}
+    \end{column}
+  \end{columns}
+  \medskip
+  \uncover<4->{\centering\textbf{\color{ragblue}This is ``garbage in,
+  garbage cited'' from earlier --- happening for real.}}
+\end{frame}
+
+\begin{frame}{Plot twist: one word, two meanings}
+  \begin{block}{The setup}
+    The same system was now loaded with two unrelated document sets: a
+    data-tool's documentation, and the AI model-runner's own documentation.
+    Both use one word constantly: \textbf{model}.
+  \end{block}
+  \medskip
+  \begin{center}
+  \begin{tikzpicture}[scale=0.85]
+    \fill[ragmint, rounded corners=12pt, opacity=0.85, visible on=<2->]
+         (0,0) rectangle (4.6,3.2);
+    \fill[ragsand, rounded corners=12pt, opacity=0.85, visible on=<3->]
+         (3.4,0) rectangle (8.0,3.2);
+    \node[font=\small\bfseries, text=raggreen, visible on=<2->] at (1.4,2.8)
+         {data-tool docs};
+    \node[font=\small\bfseries, text=ragorange, visible on=<3->] at (6.6,2.8)
+         {model-runner docs};
+    \node[font=\scriptsize, visible on=<2->] at (1.4,1.6) {``incremental model''};
+    \node[font=\scriptsize, visible on=<2->] at (1.6,0.7) {``model config''};
+    \node[font=\scriptsize, visible on=<3->] at (6.6,1.6) {``load a model''};
+    \node[font=\scriptsize, visible on=<3->] at (6.4,0.7) {``model file''};
+    \fill[ragblue, visible on=<4->] (4.0,1.6) circle (3.2pt);
+    \node[font=\scriptsize\bfseries, text=ragblue, above, visible on=<4->]
+         at (4.0,1.9) {``How do I configure a model?''};
+  \end{tikzpicture}
+  \end{center}
+  \uncover<5->{\centering\small
+  The question lands squarely in \textbf{both} clusters at once --- meaning
+  alone cannot tell them apart.}
+\end{frame}
+
+\begin{frame}{The result: a confused search}
+  \begin{alertblock}{What came back}
+    A mixed bag: some passages about the data tool, some about the
+    model-runner, none of them decisively winning. Not because retrieval was
+    broken --- because the question was genuinely ambiguous, and embeddings
+    can only match meaning, not intent.
+  \end{alertblock}
+  \smallskip
+  \uncover<2->{\begin{block}{This has a name}
+    \centering \textbf{Corpus collision} --- two unrelated document sets
+    that happen to share vocabulary. It's the ``Noise'' failure from
+    earlier, caught in the act.
+  \end{block}}
+  \smallskip
+  \uncover<3->{\begin{exampleblock}{The fix}
+    Remember the vector database's bookkeeping --- file name, source, date?
+    Tag every chunk with \emph{which} document set it came from, then
+    restrict a search to one tag before it even runs. One filter, and the
+    ambiguity disappears --- like searching only one shelf of a library
+    instead of the whole building.
+  \end{exampleblock}}
+\end{frame}
+
+\begin{frame}{The road beyond this build}
+  Everything above was the minimum viable version. Each pitfall from
+  earlier has a real, learnable fix once you go looking for it:
+  \begin{itemize}[<+->]
+    \item Chunking that respects headings and structure, not just
+          character counts
+    \item Choosing and tuning the embedding model for your language and
+          domain
+    \item A proper database instead of a toy store, once the collection
+          grows
+    \item Combining meaning-search with old-fashioned keyword search, for
+          the exact terms embeddings blur
+    \item Teaching the model to cite sources and answer partially instead
+          of refusing outright
+    \item A small labelled test set, so ``I improved it'' becomes a
+          number instead of a feeling
+  \end{itemize}
+  \medskip
+  \uncover<7->{\centering\small\color{raggray}
+  None of this changes the core idea. It's the same open-book exam, tuned.}
+\end{frame}
+
+\begin{frame}{You already have everything you need}
+  \begin{block}{The whole recipe, again}
+    A folder of documents you know well. A small local model. A few free
+    tools. An afternoon.
+  \end{block}
+  \medskip
+  \begin{exampleblock}<2->{Try it yourself}
+    \begin{itemize}
+      \item Pick 3--5 documents you actually know
+      \item Ingest them, then ask it something easy --- confirm the basics
+            work
+      \item Then try to break it: an ambiguous question, a question the
+            docs don't cover, a question that spans two files
+      \item Every failure you find maps to something in this talk
+    \end{itemize}
+  \end{exampleblock}
+  \medskip
+  \uncover<3->{\centering\textbf{\color{ragblue}Your failures will teach you
+  faster than any slide can.}}
+\end{frame}
+
+%==============================================================
 \section{Wrap-up}
 
 \begin{frame}{The vocabulary you now own}

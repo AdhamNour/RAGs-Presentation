@@ -6,10 +6,15 @@ on:
     paths:
       - '**.tex'
       - '.github/workflows/build-pdf.yml'
+    tags:
+      - 'v*'
   pull_request:
     paths:
       - '**.tex'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -31,3 +36,12 @@ jobs:
           name: rag-presentation-pdf
           path: rag-presentation.pdf
           retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            rag-presentation.pdf
+            rag-presentation.tex
+          generate_release_notes: true
